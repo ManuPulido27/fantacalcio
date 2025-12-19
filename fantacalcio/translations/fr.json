@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "version": 2,
+    "iso3": "usa",
+    "language": "Unknown"
+  },
+  "goodbye": "Au revoir",
+  "hello": "Bonjour",
+  "please": "S'il vous plaÃ®t",
+  "thank_you": "Merci",
+  "welcome": "Bienvenue"
+}

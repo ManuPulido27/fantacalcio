@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "version": 2,
+    "iso3": "usa",
+    "language": "Unknown"
+  },
+  "goodbye": "Goodbye Test",
+  "hello": "Hello",
+  "please": "Please",
+  "thank_you": "Thank you",
+  "welcome": "Welcome"
+}
