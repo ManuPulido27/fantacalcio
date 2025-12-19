@@ -104,19 +104,16 @@ void main() async {
   final descriptiveHeader = [
     'ID_Giocatore',
     'Ruolo',
-    'Ruolo_Multiplo',
     'Nome_Giocatore',
     'Squadra',
-    'Quotazione_Attuale',
-    'Quotazione_Iniziale',
-    'Differenza_Prezzo',
+    'FVM_Mercato',
+    'FVM_Stagione_Precedente',
+    'Differenza_FVM_Stagioni',
+    'FVM_Qt_Ratio',
     'Quotazione_Attuale_Mercato',
     'Quotazione_Iniziale_Mercato',
     'Differenza_Prezzo_Mercato',
     'FVM_Attuale',
-    'FVM_Mercato',
-    'FVM_Stagione_Precedente',
-    'Differenza_FVM_Stagioni',
   ];
   out.add(descriptiveHeader.join(','));
 
@@ -150,7 +147,55 @@ void main() async {
           }
         }
 
-        out.add('$line,$fvmPrev,$fvmDiff');
+        // Calculate FVM/Qt.A ratio (Value Index)
+        var fvmQtRatio = '';
+        if (parts.length > 8 && parts.length > 11) {
+          final currentPrice = parts[8]
+              .toString()
+              .trim(); // Quotazione_Attuale_Mercato
+          final currentFvm = parts[11].toString().trim();
+
+          if (currentPrice.isNotEmpty && currentFvm.isNotEmpty) {
+            final priceNum = double.tryParse(currentPrice);
+            final fvmNum = double.tryParse(currentFvm);
+
+            if (priceNum != null && fvmNum != null) {
+              if (priceNum == 0) {
+                fvmQtRatio = '0';
+              } else {
+                fvmQtRatio = (fvmNum / priceNum).toStringAsFixed(3);
+              }
+            }
+          }
+        }
+
+        // Extract only the required columns in the specified order
+        final id = parts[0].toString().trim();
+        final ruolo = parts[1].toString().trim();
+        final nome = parts[3].toString().trim();
+        final squadra = parts[4].toString().trim();
+        final fvmMercato = parts[12].toString().trim();
+        final fvmAttuale = parts[11].toString().trim();
+        final qtAttualeMercato = parts[8].toString().trim();
+        final qtInizialeMercato = parts[9].toString().trim();
+        final diffPrezzoMercato = parts[10].toString().trim();
+
+        final outputLine = [
+          id,
+          ruolo,
+          nome,
+          squadra,
+          fvmMercato,
+          fvmPrev,
+          fvmDiff,
+          fvmQtRatio,
+          qtAttualeMercato,
+          qtInizialeMercato,
+          diffPrezzoMercato,
+          fvmAttuale,
+        ].join(',');
+
+        out.add(outputLine);
         validRows2025++;
 
         if (fvmPrev.isNotEmpty) {
@@ -199,6 +244,7 @@ void main() async {
   await performComprehensiveDataIntegrityCheck(outFile, lines2025, fvm24);
   await performPlayerConsistencyCheck(outFile, lines2025, lines2024);
   await performAdvancedDataValidation(outFile, lines2025, lines2024, fvm24);
+  await createPositionFiles(outFile);
 }
 
 Future<void> performComprehensiveDataIntegrityCheck(
@@ -226,9 +272,7 @@ Future<void> performComprehensiveDataIntegrityCheck(
   final originalHeader = originalLines2025[1].split(',');
   final mergedHeader = mergedLines[1].split(',');
 
-  final expectedColumns =
-      originalHeader.length +
-      2; // +2 for FVM_Stagione_Precedente and Differenza_FVM_Stagioni
+  final expectedColumns = 12; // Fixed number of columns as per specification
   final actualColumns = mergedHeader.length;
 
   if (expectedColumns != actualColumns) {
@@ -238,7 +282,7 @@ Future<void> performComprehensiveDataIntegrityCheck(
     return;
   }
   print(
-    '✅ Column count integrity: $actualColumns columns (original + FVM_Stagione_Precedente + Differenza_FVM_Stagioni)',
+    '✅ Column count integrity: $actualColumns columns (12 columns as specified)',
   );
 
   // Check 3: Player name integrity (no duplicates, no missing)
@@ -249,17 +293,19 @@ Future<void> performComprehensiveDataIntegrityCheck(
   for (var i = 2; i < originalLines2025.length; i++) {
     final parts = originalLines2025[i].split(',');
     if (parts.length > 3) {
-      final name = parts[3].trim();
+      final name = parts[3].trim(); // Nome is at index 3 in original file
       originalNames.add(name);
     }
   }
 
   for (var i = 2; i < mergedLines.length; i++) {
     final parts = mergedLines[i].split(',');
-    if (parts.length > 3) {
-      final name = parts[3].trim();
-      mergedNames.add(name);
-      duplicateCheck[name] = (duplicateCheck[name] ?? 0) + 1;
+    if (parts.length > 2) {
+      final name = parts[2].trim(); // Nome_Giocatore is at index 2
+      if (name.isNotEmpty) {
+        mergedNames.add(name);
+        duplicateCheck[name] = (duplicateCheck[name] ?? 0) + 1;
+      }
     }
   }
 
@@ -292,10 +338,10 @@ Future<void> performComprehensiveDataIntegrityCheck(
 
   for (var i = 2; i < mergedLines.length; i++) {
     final mergedParts = mergedLines[i].split(',');
-    if (mergedParts.length > 3) {
-      final name = mergedParts[3].trim();
-      final mergedFvm = mergedParts[13]
-          .trim(); // FVM_Stagione_Precedente is now at index 13
+    if (mergedParts.length > 2) {
+      final name = mergedParts[2].trim(); // Nome_Giocatore is at index 2
+      final mergedFvm = mergedParts[5]
+          .trim(); // FVM_Stagione_Precedente is now at index 5
       final originalFvm = originalFvm24[name] ?? '';
 
       if (mergedFvm == originalFvm) {
@@ -323,7 +369,7 @@ Future<void> performComprehensiveDataIntegrityCheck(
 
   print('✅ FVM data integrity: $fvmMatches matches, 0 mismatches');
 
-  // Check 5: Data consistency
+  // Check 5: Data consistency (check core fields match)
   var consistentRows = 0;
   var inconsistentRows = 0;
 
@@ -331,15 +377,24 @@ Future<void> performComprehensiveDataIntegrityCheck(
     final originalParts = originalLines2025[i].split(',');
     final mergedParts = mergedLines[i].split(',');
 
-    if (originalParts.length == mergedParts.length - 2) {
-      // Check if all original data matches (excluding the new FVM column)
+    if (mergedParts.length == 12 && originalParts.length >= 12) {
+      // Check if core fields match (ID, Role, Name, Team, Prices, FVM)
       var matches = true;
-      for (var j = 0; j < originalParts.length; j++) {
-        if (originalParts[j].trim() != mergedParts[j].trim()) {
-          matches = false;
-          break;
-        }
-      }
+
+      // Check ID (index 0)
+      if (originalParts[0].trim() != mergedParts[0].trim()) matches = false;
+      // Check Role (index 1)
+      if (originalParts[1].trim() != mergedParts[1].trim()) matches = false;
+      // Check Name (index 3 in original, 2 in merged)
+      if (originalParts[3].trim() != mergedParts[2].trim()) matches = false;
+      // Check Team (index 4 in original, 3 in merged)
+      if (originalParts[4].trim() != mergedParts[3].trim()) matches = false;
+      // Check Current Price (index 8 in original, 8 in merged)
+      if (originalParts[8].trim() != mergedParts[8].trim()) matches = false;
+      // Check Initial Price (index 9 in original, 9 in merged)
+      if (originalParts[9].trim() != mergedParts[9].trim()) matches = false;
+      // Check Current FVM (index 11 in original, 11 in merged)
+      if (originalParts[11].trim() != mergedParts[11].trim()) matches = false;
 
       if (matches) {
         consistentRows++;
@@ -378,14 +433,14 @@ Future<void> performPlayerConsistencyCheck(
   for (var i = 2; i < originalLines2025.length; i++) {
     final parts = originalLines2025[i].split(',');
     if (parts.length > 3) {
-      players2025.add(parts[3].trim());
+      players2025.add(parts[3].trim()); // Nome is at index 3 in original file
     }
   }
 
   for (var i = 2; i < mergedLines.length; i++) {
     final parts = mergedLines[i].split(',');
-    if (parts.length > 3) {
-      playersMerged.add(parts[3].trim());
+    if (parts.length > 2) {
+      playersMerged.add(parts[2].trim()); // Nome_Giocatore is at index 2
     }
   }
 
@@ -406,8 +461,8 @@ Future<void> performPlayerConsistencyCheck(
 
   for (var i = 2; i < mergedLines.length; i++) {
     final mergedParts = mergedLines[i].split(',');
-    if (mergedParts.length > 3) {
-      final playerName = mergedParts[3].trim();
+    if (mergedParts.length > 2) {
+      final playerName = mergedParts[2].trim(); // Nome_Giocatore is at index 2
 
       // Find same player in 2024/25 data
       String? player2024Data;
@@ -440,10 +495,10 @@ Future<void> performPlayerConsistencyCheck(
           }
         }
 
-        if (mergedParts.length > 4 && parts2024.length > 4) {
-          if (mergedParts[4].trim() != parts2024[4].trim()) {
+        if (mergedParts.length > 3 && parts2024.length > 4) {
+          if (mergedParts[3].trim() != parts2024[4].trim()) {
             isConsistent = false;
-            inconsistencies.add('Team: ${mergedParts[4]} vs ${parts2024[4]}');
+            inconsistencies.add('Team: ${mergedParts[3]} vs ${parts2024[4]}');
           }
         }
 
@@ -479,10 +534,10 @@ Future<void> performPlayerConsistencyCheck(
 
   for (var i = 2; i < mergedLines.length; i++) {
     final mergedParts = mergedLines[i].split(',');
-    if (mergedParts.length > 14) {
-      final fvmDiff = mergedParts[14].trim();
+    if (mergedParts.length > 6) {
+      final fvmDiff = mergedParts[6].trim();
       final currentFvm = mergedParts[11].trim();
-      final prevFvm = mergedParts[13].trim();
+      final prevFvm = mergedParts[5].trim();
 
       if (fvmDiff.isNotEmpty && currentFvm.isNotEmpty && prevFvm.isNotEmpty) {
         final fvmDiffNum = double.tryParse(fvmDiff);
@@ -497,7 +552,7 @@ Future<void> performPlayerConsistencyCheck(
             invalidFvmDiffs++;
             if (sampleFvmIssues.length < 3) {
               sampleFvmIssues.add(
-                '${mergedParts[3]}: diff=$fvmDiff, expected=${expectedDiff.toStringAsFixed(1)}',
+                '${mergedParts[2]}: diff=$fvmDiff, expected=${expectedDiff.toStringAsFixed(1)}',
               );
             }
           }
@@ -534,21 +589,31 @@ Future<void> performAdvancedDataValidation(
   var fvmValues = <double>[];
   var fvmDiffValues = <double>[];
   var priceValues = <double>[];
+  var fvmQtRatioValues = <double>[];
 
   for (var i = 2; i < mergedLines.length; i++) {
     final parts = mergedLines[i].split(',');
     if (parts.length > 11) {
-      final fvm = double.tryParse(parts[11].trim());
+      final fvm = double.tryParse(parts[11].trim()); // FVM_Attuale
       if (fvm != null) fvmValues.add(fvm);
 
-      if (parts.length > 5) {
-        final price = double.tryParse(parts[5].trim());
+      if (parts.length > 8) {
+        final price = double.tryParse(
+          parts[8].trim(),
+        ); // Quotazione_Attuale_Mercato
         if (price != null) priceValues.add(price);
       }
 
-      if (parts.length > 14) {
-        final fvmDiff = double.tryParse(parts[14].trim());
+      if (parts.length > 6) {
+        final fvmDiff = double.tryParse(
+          parts[6].trim(),
+        ); // Differenza_FVM_Stagioni
         if (fvmDiff != null) fvmDiffValues.add(fvmDiff);
+      }
+
+      if (parts.length > 7) {
+        final fvmQtRatio = double.tryParse(parts[7].trim()); // FVM_Qt_Ratio
+        if (fvmQtRatio != null) fvmQtRatioValues.add(fvmQtRatio);
       }
     }
   }
@@ -596,6 +661,28 @@ Future<void> performAdvancedDataValidation(
     }
   }
 
+  // FVM/Qt.A ratio distribution check
+  if (fvmQtRatioValues.isNotEmpty) {
+    fvmQtRatioValues.sort();
+    final ratioMin = fvmQtRatioValues.first;
+    final ratioMax = fvmQtRatioValues.last;
+    final ratioAvg =
+        fvmQtRatioValues.reduce((a, b) => a + b) / fvmQtRatioValues.length;
+
+    print('📈 FVM/Qt.A Ratio Statistics:');
+    print(
+      '   Min: ${ratioMin.toStringAsFixed(2)}, Max: ${ratioMax.toStringAsFixed(2)}, Avg: ${ratioAvg.toStringAsFixed(2)}',
+    );
+
+    if (ratioMin < 0) {
+      print('❌ CRITICAL: Negative FVM/Qt.A ratios found!');
+    } else if (ratioMax > 50) {
+      print('⚠️  WARNING: Very high FVM/Qt.A ratios (>50) - verify data');
+    } else {
+      print('✅ FVM/Qt.A ratios within expected range');
+    }
+  }
+
   // Check 2: Cross-season data integrity
   var crossSeasonMatches = 0;
   var crossSeasonMismatches = 0;
@@ -603,16 +690,16 @@ Future<void> performAdvancedDataValidation(
 
   for (var i = 2; i < mergedLines.length; i++) {
     final mergedParts = mergedLines[i].split(',');
-    if (mergedParts.length > 3) {
-      final playerName = mergedParts[3].trim();
+    if (mergedParts.length > 2) {
+      final playerName = mergedParts[2].trim(); // Nome_Giocatore is at index 2
 
       // Find in 2024/25 data
       for (var j = 2; j < originalLines2024.length; j++) {
         final parts2024 = originalLines2024[j].split(',');
         if (parts2024.length > 3 && parts2024[3].trim() == playerName) {
           // Check if FVM data matches
-          if (mergedParts.length > 13 && parts2024.length > 11) {
-            final mergedFvm = mergedParts[13].trim();
+          if (mergedParts.length > 5 && parts2024.length > 11) {
+            final mergedFvm = mergedParts[5].trim();
             final originalFvm = parts2024[11].trim();
 
             if (mergedFvm == originalFvm) {
@@ -655,15 +742,15 @@ Future<void> performAdvancedDataValidation(
     var missing = <String>[];
 
     // Check essential fields
-    if (parts.length < 15) {
+    if (parts.length < 12) {
       isComplete = false;
       missing.add('insufficient columns');
     } else {
       if (parts[0].trim().isEmpty) missing.add('ID');
       if (parts[1].trim().isEmpty) missing.add('Role');
-      if (parts[3].trim().isEmpty) missing.add('Name');
-      if (parts[4].trim().isEmpty) missing.add('Team');
-      if (parts[5].trim().isEmpty) missing.add('Current Price');
+      if (parts[2].trim().isEmpty) missing.add('Name');
+      if (parts[3].trim().isEmpty) missing.add('Team');
+      if (parts[8].trim().isEmpty) missing.add('Current Price');
 
       if (missing.isNotEmpty) {
         isComplete = false;
@@ -696,18 +783,46 @@ Future<void> performAdvancedDataValidation(
 
   for (var i = 2; i < mergedLines.length; i++) {
     final parts = mergedLines[i].split(',');
-    if (parts.length > 14) {
-      final currentFvm = double.tryParse(parts[11].trim());
-      final prevFvm = double.tryParse(parts[13].trim());
-      final fvmDiff = double.tryParse(parts[14].trim());
+    if (parts.length > 11) {
+      final currentFvm = double.tryParse(parts[11].trim()); // FVM_Attuale
+      final prevFvm = double.tryParse(
+        parts[5].trim(),
+      ); // FVM_Stagione_Precedente
+      final fvmDiff = double.tryParse(
+        parts[6].trim(),
+      ); // Differenza_FVM_Stagioni
+      final currentPrice = double.tryParse(
+        parts[8].trim(),
+      ); // Quotazione_Attuale_Mercato
+      final fvmQtRatio = double.tryParse(parts[7].trim()); // FVM_Qt_Ratio
 
+      // Check FVM difference calculation
       if (currentFvm != null && prevFvm != null && fvmDiff != null) {
         final expectedDiff = currentFvm - prevFvm;
         if ((fvmDiff - expectedDiff).abs() > 0.1) {
           logicalErrors++;
           if (sampleErrors.length < 3) {
             sampleErrors.add(
-              '${parts[3]}: calculated=${expectedDiff.toStringAsFixed(1)}, stored=${fvmDiff.toStringAsFixed(1)}',
+              '${parts[2]}: FVM diff calculated=${expectedDiff.toStringAsFixed(1)}, stored=${fvmDiff.toStringAsFixed(1)}',
+            );
+          }
+        }
+      }
+
+      // Check FVM/Qt.A ratio calculation
+      if (currentFvm != null && currentPrice != null && fvmQtRatio != null) {
+        double expectedRatio;
+        if (currentPrice == 0) {
+          expectedRatio = 0;
+        } else {
+          expectedRatio = currentFvm / currentPrice;
+        }
+
+        if ((fvmQtRatio - expectedRatio).abs() > 0.01) {
+          logicalErrors++;
+          if (sampleErrors.length < 3) {
+            sampleErrors.add(
+              '${parts[2]}: FVM/Qt ratio calculated=${expectedRatio.toStringAsFixed(3)}, stored=${fvmQtRatio.toStringAsFixed(3)}',
             );
           }
         }
@@ -731,13 +846,24 @@ Future<void> performAdvancedDataValidation(
 
   for (var i = 2; i < mergedLines.length; i++) {
     final parts = mergedLines[i].split(',');
-    if (parts.length > 14) {
-      final fvmDiff = double.tryParse(parts[14].trim());
+    if (parts.length > 7) {
+      final fvmDiff = double.tryParse(parts[6].trim());
+      final fvmQtRatio = double.tryParse(parts[7].trim());
+
       if (fvmDiff != null && fvmDiff.abs() > 100) {
         rangeErrors++;
         if (sampleRangeErrors.length < 3) {
           sampleRangeErrors.add(
-            '${parts[3]}: extreme FVM diff of ${fvmDiff.toStringAsFixed(1)}',
+            '${parts[2]}: extreme FVM diff of ${fvmDiff.toStringAsFixed(1)}',
+          );
+        }
+      }
+
+      if (fvmQtRatio != null && fvmQtRatio > 50) {
+        rangeErrors++;
+        if (sampleRangeErrors.length < 3) {
+          sampleRangeErrors.add(
+            '${parts[2]}: extreme FVM/Qt ratio of ${fvmQtRatio.toStringAsFixed(2)}',
           );
         }
       }
@@ -760,6 +886,101 @@ Future<void> performAdvancedDataValidation(
   print('   Your data has passed all automated quality checks.');
 }
 
+Future<void> createPositionFiles(File mergedFile) async {
+  print('\n=== CREATING POSITION FILES ===');
+
+  final lines = await mergedFile.readAsLines();
+  if (lines.length < 3) {
+    print('ERROR: Insufficient data in merged file');
+    return;
+  }
+
+  final header = lines[1].split(',');
+  final ruoloIndex = header.indexOf('Ruolo');
+  final fvmIndex = header.indexOf('FVM_Attuale');
+
+  if (ruoloIndex == -1) {
+    print('ERROR: Ruolo column not found');
+    return;
+  }
+  if (fvmIndex == -1) {
+    print('ERROR: FVM_Attuale column not found');
+    return;
+  }
+
+  // Group players by position
+  final playersByPosition = <String, List<List<String>>>{};
+
+  for (var i = 2; i < lines.length; i++) {
+    final parts = lines[i].split(',');
+    if (parts.length > ruoloIndex && parts.length > fvmIndex) {
+      final ruolo = parts[ruoloIndex].trim();
+      final fvmStr = parts[fvmIndex].trim();
+      final fvm = double.tryParse(fvmStr) ?? 0.0;
+
+      // Create player data with FVM for sorting
+      final playerData = [...parts, fvm.toString()];
+
+      if (!playersByPosition.containsKey(ruolo)) {
+        playersByPosition[ruolo] = [];
+      }
+      playersByPosition[ruolo]!.add(playerData);
+    }
+  }
+
+  // Sort each position by FVM (descending) and create files
+  for (final entry in playersByPosition.entries) {
+    final ruolo = entry.key;
+    final players = entry.value;
+
+    // Sort by FVM descending
+    players.sort((a, b) {
+      final fvmA = double.tryParse(a[a.length - 1]) ?? 0.0;
+      final fvmB = double.tryParse(b[b.length - 1]) ?? 0.0;
+      return fvmB.compareTo(fvmA);
+    });
+
+    // Create filename
+    final fileName = 'giocatori_${ruolo.toLowerCase()}_sorted.csv';
+    final positionFile = File(fileName);
+
+    // Prepare output
+    final output = <String>[];
+    output.add(lines[0]); // Title row
+    output.add(lines[1]); // Header row
+
+    // Add sorted players (remove the temporary FVM sort value)
+    for (final player in players) {
+      final playerLine = player.take(player.length - 1).join(',');
+      output.add(playerLine);
+    }
+
+    // Write file
+    await positionFile.writeAsString(output.join('\n'));
+
+    print('✅ Created $fileName with ${players.length} players');
+
+    // Show top 3 players for this position
+    if (players.isNotEmpty) {
+      print('   Top players:');
+      for (var i = 0; i < 3 && i < players.length; i++) {
+        final player = players[i];
+        final name = player[2].trim();
+        final fvm = player[11].trim();
+        final price = player[8].trim();
+        final team = player[3].trim();
+        print('   ${i + 1}. $name ($team) - FVM: $fvm, Price: $price');
+      }
+    }
+  }
+
+  print('\n🎉 POSITION FILES CREATED!');
+  print('   Files created: ${playersByPosition.keys.length}');
+  print(
+    '   Total players processed: ${playersByPosition.values.fold(0, (sum, list) => sum + list.length)}',
+  );
+}
+
 Future<void> verifyMergedData(
   File mergedFile,
   Map<String, String> originalFvm24,
@@ -772,7 +993,7 @@ Future<void> verifyMergedData(
     return;
   }
 
-  final header = lines.first.split(',');
+  final header = lines[1].split(','); // Use the descriptive header row
   final fvmColIndex = header.indexOf('FVM_Stagione_Precedente');
 
   if (fvmColIndex == -1) {
@@ -788,13 +1009,11 @@ Future<void> verifyMergedData(
 
   for (var i = 2; i < lines.length; i++) {
     final line = lines[i];
-    final parts = const CsvToListConverter()
-        .convert(line, eol: '\n', fieldDelimiter: ',')
-        .first;
+    final parts = line.split(',');
 
-    if (parts.length > fvmColIndex) {
-      final name = parts[3].toString().trim();
-      final mergedFvm = parts[fvmColIndex].toString().trim();
+    if (parts.length > fvmColIndex && parts.length > 2) {
+      final name = parts[2].trim(); // Nome_Giocatore is at index 2
+      final mergedFvm = parts[fvmColIndex].trim();
       final originalFvm = originalFvm24[name] ?? '';
 
       if (mergedFvm == originalFvm) {
@@ -847,8 +1066,8 @@ Future<void> performDataQualityChecks(File mergedFile) async {
 
   final nameIndex = header.indexOf('Nome_Giocatore');
   final fvmIndex = header.indexOf('FVM_Stagione_Precedente');
-  final qtAIndex = header.indexOf('Quotazione_Attuale');
-  final qtIIndex = header.indexOf('Quotazione_Iniziale');
+  final qtAIndex = header.indexOf('Quotazione_Attuale_Mercato');
+  final qtIIndex = header.indexOf('Quotazione_Iniziale_Mercato');
 
   var playersWithFvm = 0;
   var playersWithoutFvm = 0;
@@ -857,6 +1076,8 @@ Future<void> performDataQualityChecks(File mergedFile) async {
   var priceInconsistencies = 0;
   var invalidFvmDifferences = 0;
   var fvmDifferenceErrors = 0;
+  var invalidFvmQtRatios = 0;
+  var fvmQtRatioErrors = 0;
 
   for (var i = 2; i < lines.length; i++) {
     final line = lines[i];
@@ -903,8 +1124,8 @@ Future<void> performDataQualityChecks(File mergedFile) async {
       }
 
       // Check FVM difference quality
-      if (parts.length > 14) {
-        final fvmDiff = parts[14].toString().trim();
+      if (parts.length > 6) {
+        final fvmDiff = parts[6].toString().trim();
         if (fvmDiff.isNotEmpty) {
           final fvmDiffNum = double.tryParse(fvmDiff);
           if (fvmDiffNum == null) {
@@ -913,6 +1134,22 @@ Future<void> performDataQualityChecks(File mergedFile) async {
             // Check if FVM difference makes sense (not too extreme)
             if (fvmDiffNum.abs() > 50) {
               fvmDifferenceErrors++;
+            }
+          }
+        }
+      }
+
+      // Check FVM/Qt.A ratio quality
+      if (parts.length > 7) {
+        final fvmQtRatio = parts[7].toString().trim();
+        if (fvmQtRatio.isNotEmpty) {
+          final fvmQtRatioNum = double.tryParse(fvmQtRatio);
+          if (fvmQtRatioNum == null) {
+            invalidFvmQtRatios++;
+          } else {
+            // Check if FVM/Qt.A ratio makes sense (not too extreme)
+            if (fvmQtRatioNum > 50) {
+              fvmQtRatioErrors++;
             }
           }
         }
@@ -927,6 +1164,8 @@ Future<void> performDataQualityChecks(File mergedFile) async {
   print('• Price inconsistencies (Qt.A < Qt.I): $priceInconsistencies');
   print('• Invalid FVM differences: $invalidFvmDifferences');
   print('• Extreme FVM differences (>50): $fvmDifferenceErrors');
+  print('• Invalid FVM/Qt.A ratios: $invalidFvmQtRatios');
+  print('• Extreme FVM/Qt.A ratios (>50): $fvmQtRatioErrors');
 
   final duplicates = duplicateNames.entries.where((e) => e.value > 1).toList();
   if (duplicates.isNotEmpty) {
@@ -944,7 +1183,10 @@ Future<void> performDataQualityChecks(File mergedFile) async {
       : '0';
   print('\nFVM data coverage: $fvmCoverage% ($playersWithFvm/$totalPlayers)');
 
-  if (invalidPrices > 0 || duplicates.isNotEmpty || invalidFvmDifferences > 0) {
+  if (invalidPrices > 0 ||
+      duplicates.isNotEmpty ||
+      invalidFvmDifferences > 0 ||
+      invalidFvmQtRatios > 0) {
     print('⚠️  Data quality issues detected - review recommended');
   } else {
     print('✅ Data quality checks passed');
@@ -956,6 +1198,11 @@ Future<void> performDataQualityChecks(File mergedFile) async {
     if (fvmDifferenceErrors > 0) {
       print(
         'ℹ️  Note: $fvmDifferenceErrors players have extreme FVM changes (>50) - check for transfers/injuries',
+      );
+    }
+    if (fvmQtRatioErrors > 0) {
+      print(
+        'ℹ️  Note: $fvmQtRatioErrors players have extreme FVM/Qt.A ratios (>50) - verify data',
       );
     }
   }
