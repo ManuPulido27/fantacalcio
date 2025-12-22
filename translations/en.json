@@ -1,8 +1,12 @@
 {
-  "welcome": "Welcome",
-  "hello": "Hello",
+  "_meta": {
+    "version": 2,
+    "iso3": "usa",
+    "language": "English"
+  },
   "goodbye": "Goodbye",
+  "hello": "Hello",
+  "please": "Please",
   "thank_you": "Thank you",
-  "please": "Please"
+  "welcome": "Welcome"
 }
-
