@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "version": 2,
+    "version": 3,
     "iso3": "bra",
     "language": "Portuguese"
   },
@@ -8,5 +8,5 @@
   "hello": "Hello",
   "please": "Please",
   "thank_you": "Thank you",
-  "welcome": "Welcome"
+  "welcome": "Welcome pt123"
 }
