@@ -1,10 +1,10 @@
 {
   "_meta": {
     "version": 2,
-    "iso3": "usa",
-    "language": "English"
+    "iso3": "bra",
+    "language": "Portuguese"
   },
-  "goodbye": "Goodbye",
+  "goodbye": "123",
   "hello": "Hello",
   "please": "Please",
   "thank_you": "Thank you",
