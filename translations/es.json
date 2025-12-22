@@ -1,8 +1,12 @@
 {
-  "welcome": "Bienvenido",
-  "hello": "Hola",
+  "_meta": {
+    "version": 4,
+    "iso3": "esp",
+    "language": "Spanish"
+  },
   "goodbye": "Adiós",
+  "hello": "Hola",
+  "please": "Por favor",
   "thank_you": "Gracias",
-  "please": "Por favor"
+  "welcome": "Bienvenido"
 }
-

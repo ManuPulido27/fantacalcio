@@ -1,8 +1,12 @@
 {
-  "welcome": "Bienvenue",
-  "hello": "Bonjour",
+  "_meta": {
+    "version": 4,
+    "iso3": "fra",
+    "language": "French"
+  },
   "goodbye": "Au revoir",
+  "hello": "Bonjour",
+  "please": "S'il vous plaît",
   "thank_you": "Merci",
-  "please": "S'il vous plaît"
+  "welcome": "Bienvenue"
 }
-
